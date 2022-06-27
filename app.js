@@ -11,8 +11,6 @@ var bodyParser = require('body-parser');
 var app = express();
 var ctrl = require('./routes/controller');
 
-var server = require("http").createServer(app);
-var io = require("socket.io")(server);
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'ejs');
@@ -26,12 +24,6 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// app.use(session({
-//   resave: true,
-//   saveUninitialized: true,
-//   secret: 'XCR3rsasa%RDHHH',
-//   cookie: { maxAge: 1000 * 60 * 60 * 24 }
-// }));
 // var server = app.listen(3000,  "127.0.0.1", function () {
 //   var host = server.address().address
 //   var port = server.address().port
@@ -46,17 +38,17 @@ app.use(function(req, res, next) {
   next(createError(404));
 });
 
-io.on("connection", function(socket){
-    socket.on("newuser",function(username){
-        socket.broadcast.emit("update", username + " joined the conversation");
-    });
-    socket.on("exituser",function(username){
-        socket.broadcast.emit("update", username + " left the conversation");
-    });
-    socket.on("chat",function(message){
-        socket.broadcast.emit("chat", message);
-    });
-});
+// io.on("connection", function(socket){
+//     socket.on("newuser",function(username){
+//         socket.broadcast.emit("update", username + " joined the conversation");
+//     });
+//     socket.on("exituser",function(username){
+//         socket.broadcast.emit("update", username + " left the conversation");
+//     });
+//     socket.on("chat",function(message){
+//         socket.broadcast.emit("chat", message);
+//     });
+// });
 //server.listen(5000);
 // error handler
 app.use(function(err, req, res, next) {

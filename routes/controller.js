@@ -4,6 +4,10 @@ var multer = require('multer');
 var db = require('../models/model');
 var alert = require('alert');
 
+// var server = require("http").createServer(app);
+// var io = require("socket.io")(server);
+var moment = require('moment');
+
 router.get('/', function(req, res, next){
   res.render("login");
   //res.render("chat");
@@ -13,25 +17,25 @@ router.post('/login', function(req, res, next) {
   let pass = req.body.pass;
 	if(user=="" || pass=="") res.render("login");
 	else{
-    db.query(`select DISTINCT ad.username as aduser, ad.password as adpass,
-      cus.username as cususer, cus.password as cuspass,
-      dr.username as druser, dr.password as drpass
-      from admin as ad, customer as cus, doctor as dr`,
+    db.query(`SELECT ad.username AS aduser, ad.password AS adpass,
+    cus.username AS cususer, cus.password AS cuspass,
+    dr.username AS druser, dr.password AS drpass FROM doctor AS dr,
+    admin AS ad, customer AS cus`,
     function(err, data) {
         if (err) throw err;
         var ad = 0;
         var cu = 0;
         var dr = 0;
         for(let i of data){
-          if(i.aduser===user && i.adpass==pass){
+          if(i.aduser===user && i.adpass===pass){
             ad = 1;
             break;
           }
-          if(i.cususer==user && i.cuspass==pass){
+          if(i.cususer===user && i.cuspass===pass){
             cu = 1;
             break;
           }
-          if(i.druser==user && i.drpass==pass){
+          if(i.druser===user && i.drpass===pass){
             dr = 1;
             break;
           }
@@ -99,17 +103,17 @@ router.post('/login', function(req, res, next) {
             });
           });
         }
-        else{
-          db.query(`select id_admin, name from admin where username=? and password=?`,
-          [user, pass], function(err, dt){
+        else if(ad==1){
+          db.query(`select id_admin, name, liked_post from admin where username=? and password=?`,
+          [user, pass], function(err, dta){
             if (typeof localStorage === "undefined" || localStorage === null) {
                var LocalStorage = require('node-localstorage').LocalStorage;
                localStorage = new LocalStorage('./scratch');
             }
             let users = {
-              id:dt[0].id_admin,
-              name:dt[0].name,
-              liked_post:dt[0].liked_post
+              id:dta[0].id_admin,
+              name:dta[0].name,
+              liked_post:dta[0].liked_post
             }
             localStorage.setItem('user', JSON.stringify(users));
             localStorage.setItem('isHigh', 0);
@@ -121,7 +125,7 @@ router.post('/login', function(req, res, next) {
                 FROM doctor as dr
                 left join tag on dr.id_tag = tag.id_tag
                 left join rank on dr.id_rank = rank.id_rank`, function(err, dt) {
-                  res.render("admin", {id_ad:dt, cusList:data, docList:dt});
+                  res.render("admin", {id_ad:users.id, cusList:data, docList:dt});
               });
             });
           });
@@ -173,7 +177,7 @@ router.post('/register', function(req, res){
   }
   else{
     var idUser = "CU";
-    db.query('SELECT id_user from customer ORDER BY id_user DESC LIMIT 1',
+    db.query(`SELECT id_user from customer ORDER BY CAST(SUBSTRING(id_user, 3) AS UNSIGNED) DESC LIMIT 1`,
     function(err, data) {
         if (err) throw err;
         var number = Number(data[0].id_user.substring(2)) + 1;
@@ -192,7 +196,7 @@ router.post('/register', function(req, res){
               let users = {
                 id:idUser,
                 name:name,
-                liked_post:dt[0].liked_post
+                liked_post:null
               }
               if (typeof localStorage === "undefined" || localStorage === null) {
                  var LocalStorage = require('node-localstorage').LocalStorage;
@@ -210,20 +214,20 @@ router.post('/register', function(req, res){
 });
 
 router.get('/mainForm', function(req, res){
-  // let users = {
-  //   id:dt[0].id_admin,
-  //   name:dt[0].name
-  // }
-  // if (typeof localStorage === "undefined" || localStorage === null) {
-  //    var LocalStorage = require('node-localstorage').LocalStorage;
-  //    localStorage = new LocalStorage('./scratch');
-  // }
-  // var id_ad = JSON.parse(localStorage.getItem('user'));
-  // localStorage.setItem('user', JSON.stringify(users));
-  // localStorage.setItem('isHigh', JSON.stringify(false));
-  // localStorage.setItem('isDoctor', JSON.stringify(false));
-  // localStorage.setItem('posts', JSON.stringify(data));
-  res.render("home");
+  db.query(`select dr.name as docName, dr.icon_image, tag.name_tag,
+    post.time, post.id_dr, post.content, post.title,
+    post.image_path, post.liked, post.id_post
+    from post left join doctor as dr on post.id_dr = dr.id_dr
+    left join tag on post.id_tag = tag.id_tag`,
+  function(err, data) {
+      if (err) throw err;
+      if (typeof localStorage === "undefined" || localStorage === null) {
+         var LocalStorage = require('node-localstorage').LocalStorage;
+         localStorage = new LocalStorage('./scratch');
+      }
+      localStorage.setItem('posts', JSON.stringify(data));
+      res.render("home");
+    });
 });
 
 router.get('/addNewDoc', function(req, res){
@@ -268,7 +272,7 @@ router.post('/storeDoc', function(req, res){
   else{
     var idDr = "DR";
     db.query(`select * from pre_doctor where id_pre=?`,[id], function(err, dta){
-      db.query(`SELECT id_dr from doctor ORDER BY id_dr DESC LIMIT 1`,
+      db.query(`SELECT id_dr from doctor ORDER BY CAST(SUBSTRING(id_dr, 3) AS UNSIGNED) DESC LIMIT 1`,
       function(err, data) {
           if (err) throw err;
           var number = Number(data[0].id_dr.substring(2)) + 1;
@@ -313,13 +317,16 @@ router.get('/doctor/:id', function(req, res){
 });
 
 router.get('/ranking', function(req, res){
-  db.query(`select * from doctor ORDER BY sum_like DESC`,function(err, data){
-    if(err) throw err;
-    db.query(`select * from tag`,function(err, dt){
+  db.query(`SELECT dr.*, tag.name_tag, rank.name_rank
+    FROM doctor as dr left join tag on dr.id_tag = tag.id_tag
+    left join rank on dr.id_rank = rank.id_rank ORDER BY CAST(dr.sum_like as UNSIGNED) DESC`,
+    function(err, data){
       if(err) throw err;
-      res.render("Leaderboard",{tags:dt, docs:data});
-    });
-  });
+      db.query(`select * from tag`,function(err, dt){
+        if(err) throw err;
+        res.render("Leaderboard",{tags:dt, docs:data});
+      });
+   });
 });
 
 router.get('/allTag', function(req, res){
@@ -432,7 +439,7 @@ router.post('/addPost', function(req, res){
   }
   var id = JSON.parse(localStorage.getItem('user')).id;
   var tag = JSON.parse(localStorage.getItem('user')).tag;
-  db.query(`SELECT id_prepost FROM pre_post order by id_prepost desc limit 1`,
+  db.query(`SELECT id_prepost FROM pre_post order by CAST(id_prepost AS UNSIGNED) desc limit 1`,
   function(err, data){
     var idPost = Number(data[0].id_prepost.substring(0)) + 1;
     var rgt = {id_prepost:idPost, id_user:id, id_tag:tag, content:ctn, image_path:icon, title:title};
@@ -466,7 +473,7 @@ router.post('/solveAccept', function(req, res){
   }
   var iddr = JSON.parse(localStorage.getItem('user')).id;
   db.query(`select * from pre_post where id_prepost=?`,[acc], function(err, dta){
-    db.query(`SELECT id_post from post ORDER BY id_post DESC LIMIT 1`,
+    db.query(`SELECT id_post from post ORDER BY CAST(id_post AS UNSIGNED) DESC LIMIT 1`,
     function(err, data) {
         if (err) throw err;
         var number = Number(data[0].id_post.substring(0)) + 1;
@@ -548,8 +555,8 @@ router.post('/like_post', function(req, res){
           function(err, dl){
             if(String(userid).substr(0, 2).includes("DR")){
               db.query(`select * from doctor where id_dr=?`,userid, function(err,dta){
-                if(String(dta[0].liked_post).includes(String(post))) var list = String(dta[0].liked_post).replace(String(post)+" ","");
-                else var list = String(dta[0].liked_post).replace("null","").replace(" ","") + String(post) + " ";
+                if(String(dta[0].liked_post).includes(String(post))) var list = String(dta[0].liked_post).replace(String(post)+",","").trim();
+                else var list = String(dta[0].liked_post).replace("null","").trim() + String(post) + ", ";
                 db.query(`update doctor SET liked_post=? where id_dr=?`,[list,userid],
                   function(err, daTa){
                     db.query(`select dr.name as docName, dr.icon_image, tag.name_tag,
@@ -577,8 +584,8 @@ router.post('/like_post', function(req, res){
             }
             else if(String(userid).substr(0, 2).includes("CU")){
               db.query(`select * from customer where id_user=?`,userid, function(err,dta){
-                if(String(dta[0].liked_post).includes(String(post))) var list = String(dta[0].liked_post).replace(String(post),"");
-                else var list = String(dta[0].liked_post).replace("null","").replace(" ","") + String(post) + " ";
+                if(String(dta[0].liked_post).includes(String(post))) var list = String(dta[0].liked_post).replace(String(post)+",","").trim();
+                else var list = String(dta[0].liked_post).replace("null","").trim() + String(post) + ", ";
                 db.query(`update customer SET liked_post=? where id_user=?`,[list,userid],
                   function(err, daTa){
                     db.query(`select dr.name as docName, dr.icon_image, tag.name_tag,
@@ -605,8 +612,8 @@ router.post('/like_post', function(req, res){
             }
             else{
               db.query(`select * from admin where id_admin=?`,userid, function(err,dta){
-                if(String(dta[0].liked_post).includes(String(post))) var list = String(dta[0].liked_post).replace(String(post),"");
-                else var list = String(dta[0].liked_post).replace("null","").replace(" ","") + String(post) + " ";
+                if(String(dta[0].liked_post).includes(String(post))) var list = String(dta[0].liked_post).replace(String(post)+",","").trim();
+                else var list = String(dta[0].liked_post).replace("null","").trim() + String(post) + ", ";
                 db.query(`update admin SET liked_post=? where id_admin=?`,[list,userid],
                   function(err, daTa){
                     db.query(`select dr.name as docName, dr.icon_image, tag.name_tag,
@@ -660,7 +667,7 @@ router.post('/comment', function(req, res){
   var id_pr = req.body.id_parent;
   var id_user = req.body.id_user;
   var cnt = req.body.comment;
-  db.query(`SELECT id_cmt from comment ORDER BY id_cmt DESC LIMIT 1`,
+  db.query(`SELECT id_cmt from comment ORDER BY CAST(id_cmt AS UNSIGNED) DESC LIMIT 1`,
   function(err, data) {
       if (err) throw err;
       var number = Number(data[0].id_cmt.substring(0)) + 1;
@@ -675,11 +682,11 @@ router.post('/comment', function(req, res){
 router.post('/search', function(req, res){
   var cnt = req.body.search;
   console.log(cnt);
-  db.query(`select dr.name as docName, dr.icon_image, tag.name_tag,
+  var qr = db.query(`select dr.name as docName, dr.icon_image, tag.name_tag,
     post.time, post.id_dr, post.content, post.title,
     post.image_path, post.liked, post.id_post
     from post left join doctor as dr on post.id_dr = dr.id_dr
-    left join tag on post.id_tag = tag.id_tag where post.title LIKE '%?%'`, cnt,
+    left join tag on post.id_tag = tag.id_tag where post.title LIKE '%${cnt}%'`,
   function(err, data) {
       if (err) throw err;
       if (typeof localStorage === "undefined" || localStorage === null) {
@@ -689,6 +696,61 @@ router.post('/search', function(req, res){
       localStorage.setItem('posts', JSON.stringify(data));
       res.render("home");
   });
+  console.log(qr.sql);
 });
+
+
+router.get('/chat/:name', function(req, res){
+    if (typeof localStorage === "undefined" || localStorage === null) {
+      var LocalStorage = require('node-localstorage').LocalStorage;
+      localStorage = new LocalStorage('./scratch');
+  }
+    var myUser = JSON.parse(localStorage.getItem('user'))
+    var yourName;
+    var allPeople;
+    var listPeople=[];
+    
+    db.query(`SELECT id_dr AS id, name, icon_image AS avatar FROM doctor 
+        UNION SELECT id_user AS id, name, icon_image AS avatar FROM customer 
+        UNION SELECT id_admin AS id,  name, icon_image AS avatar FROM admin;`,
+        function(err, data){
+          if (err) throw err;
+          allPeople = data;
+          myUser = allPeople.find(function(person){
+            return person.name === myUser.name;
+          })
+          //console.log(myUser.avatar);
+          db.query(`SELECT * FROM rooms WHERE person1 = '${myUser.name}' OR person2 = '${myUser.name}'`, 
+          function(err, data){
+            if(err) throw err;
+            myRooms = data;
+            //mỗi room sẽ có bản thân và 1 người khác
+           // console.log("this is my room " + myRooms[0].conversation + " and " + myRooms[0].person1+ " and " + myRooms[0].person2);
+            myRooms.forEach(function(room){
+              var person = room.person1 === myUser.name? room.person2 : room.person1;
+             // console.log("this is person " + person)
+             // console.log("this is someone " + allPeople[0].name)
+              var otherUser = allPeople.find(function(eachPerson){
+                return eachPerson.name === person;
+              })
+              // console.log("this is other user " + otherUser.name + " with " +otherUser.id )
+              listPeople.push({id: otherUser.id, name: otherUser.name, ava: otherUser.avatar, conversation: room.conversation});
+              //console.log("this is list people" + listPeople[0].name )
+              
+            })
+            yourUser = allPeople.find(function(eachPerson){
+                return eachPerson.name === req.params.name;
+            })
+            //console.log(myUser.avatar + " and " + yourUser.avatar);
+            res.render("chat", {myself: myUser, yourself: yourUser, listUsers: listPeople})
+            // io.to(socket.id).emit("user connected", {user, listPeople});
+          })
+    });
+    
+    //console.log("nani???");
+    // res.render("demoChat", {myself: myUser, listUser: listPeople})
+    
+
+})
 
 module.exports = router;
